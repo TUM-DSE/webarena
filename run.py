@@ -113,7 +113,7 @@ def config() -> argparse.Namespace:
     # lm config
     parser.add_argument("--provider", type=str, default="openai")
     parser.add_argument("--model", type=str, default="gpt-3.5-turbo-0613")
-    parser.add_argument("--mode", type=str, default="chat")
+    parser.add_argument("--mode", type=str, default="completion")
     parser.add_argument("--temperature", type=float, default=1.0)
     parser.add_argument("--top_p", type=float, default=0.9)
     parser.add_argument("--context_length", type=int, default=0)
@@ -278,24 +278,31 @@ def test(
             logger.info(f"[Intent]: {intent}")
 
             agent.reset(config_file)
+            print('[TEO] >>> Reset agent conf file')
             trajectory: Trajectory = []
+            print('[TEO] >>> AAAA')
             obs, info = env.reset(options={"config_file": config_file})
+            print(f'[TEO] >>> Reset env')
             state_info: StateInfo = {"observation": obs, "info": info}
             trajectory.append(state_info)
 
             meta_data = {"action_history": ["None"]}
             while True:
+                print('[TEO] >>> Test early stop action')
                 early_stop_flag, stop_info = early_stop(
                     trajectory, max_steps, early_stop_thresholds
                 )
+                print('[TEO] >>> Tested early stop action')
 
                 if early_stop_flag:
                     action = create_stop_action(f"Early stop: {stop_info}")
                 else:
                     try:
+                        print('[TEO] >>> Generating next action')
                         action = agent.next_action(
                             trajectory, intent, meta_data=meta_data
                         )
+                        print('[TEO] >>> Generated next action')
                     except ValueError as e:
                         # get the error message
                         action = create_stop_action(f"ERROR: {str(e)}")
@@ -314,6 +321,7 @@ def test(
                     action, state_info, meta_data, args.render_screenshot
                 )
                 meta_data["action_history"].append(action_str)
+                print(f"Generated action: {action_str}")
 
                 if action["action_type"] == ActionTypes.STOP:
                     break
@@ -362,7 +370,10 @@ def test(
         render_helper.close()
 
     env.close()
-    logger.info(f"Average score: {sum(scores) / len(scores)}")
+    if len(scores) != 0:
+        logger.info(f"Average score: {sum(scores) / len(scores)}")
+    else:
+        logger.info('Average score: 0 (no scores)')
 
 
 def prepare(args: argparse.Namespace) -> None:

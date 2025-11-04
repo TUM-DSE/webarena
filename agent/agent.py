@@ -29,6 +29,7 @@ class Agent:
     """Base class for the agent"""
 
     def __init__(self, *args: Any) -> None:
+        print('[TEO] >>>>> Agent created!')
         pass
 
     def next_action(
@@ -151,6 +152,7 @@ class PromptAgent(Agent):
                     action["raw_prediction"] = response
                     break
 
+        print(f'[TEO] >>> ACTION: {action}')
         return action
 
     def reset(self, test_config_file: str) -> None:

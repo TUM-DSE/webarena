@@ -193,24 +193,35 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
         :param options: options for the environment. The current supported options are:
             - "storage_state": the storage state of the browser. It is a file path to a json file.
         """
+        print('\t[TEO] >>> Env resetting')
         super().reset(seed=seed, options=options)
+        print('\t[TEO] >>> Env super reset finished')
         if self.reset_finished:
             self.context_manager.__exit__()
 
+        print('\t[TEO] >>> Env checking options')
         if options is not None and "config_file" in options:
             config_file = Path(options["config_file"])
+            print('\t[TEO] >>> Env checking if config file exists')
             if config_file.exists():
+                print('\t[TEO] >>> Env doing self setup...')
                 self.setup(config_file=config_file)
+                print('\t[TEO] >>> Env self setup done')
             else:
                 raise ValueError(f"Config file {config_file} does not exist.")
         else:
+            print('\t[TEO] >>> Env setup...')
             self.setup()
+            print('\t[TEO] >>> Env setup finished')
+
         self.reset_finished = True
 
         if self.sleep_after_execution > 0:
             time.sleep(self.sleep_after_execution)
 
+        print('\t[TEO] >>> Env get obs')
         observation = self._get_obs()
+        print('\t[TEO] >>> Env get obs metadata')
         observation_metadata = self._get_obs_metadata()
         info = {
             "page": DetachedPage(self.page.url, ""),
@@ -218,6 +229,7 @@ class ScriptBrowserEnv(Env[dict[str, Observation], Action]):
             "observation_metadata": observation_metadata,
         }
 
+        print('\t[TEO] >>> Env reset finished')
         return (observation, info)
 
     def save_trace(self, trace_path: str | Path) -> None:

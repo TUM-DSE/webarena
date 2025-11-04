@@ -711,7 +711,9 @@ class ObservationHandler:
     def get_observation(
         self, page: Page, client: CDPSession
     ) -> dict[str, Observation]:
+        print('\t\tText processor getting text obs')
         text_obs = self.text_processor.process(page, client)
+        print('\t\tImage processor getting text obs')
         image_obs = self.image_processor.process(page, client)
         return {"text": text_obs, "image": image_obs}
 

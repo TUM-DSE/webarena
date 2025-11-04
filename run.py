@@ -35,6 +35,22 @@ from browser_env.helper_functions import (
 )
 from evaluation_harness import evaluator_router
 
+from multiprocessing import shared_memory
+from guardian_api import llm
+from guardian_api import extract_MCP
+from guardian_api import call_MCP
+from guardian_api import get_tools
+
+
+class Context:
+    def __init__(self):
+        self.shm_to_guardian = None
+        self.shm_from_guardian = None
+        self.shm_flags = None
+        self.request_flag = 0
+        self.response_flag = 1
+
+
 LOG_FOLDER = "log_files"
 Path(LOG_FOLDER).mkdir(parents=True, exist_ok=True)
 LOG_FILE_NAME = f"{LOG_FOLDER}/log_{time.strftime('%Y%m%d%H%M%S', time.localtime())}_{random.randint(0, 10000)}.log"
@@ -214,10 +230,35 @@ def early_stop(
     return False, ""
 
 
+def generate_init_env_mcp(args):
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "web_server__init_env", 
+            "arguments": {
+                "render": args.render, 
+                "slow_mo": args.slow_mo, 
+                "observation_type": args.observation_type, 
+                "current_viewport_only": args.current_viewport_only, 
+                "viewport_width": args.viewport_width, 
+                "viewport_height": args.viewport_height, 
+                "save_trace_enabled": args.save_trace_enabled, 
+                "sleep_after_execution": args.sleep_after_execution
+            }
+        }
+    }
+   # msg = f'{{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {{"name": "web_server__init_env", "arguments": {{"render": {args.render}, "slow_mo": {args.slow_mo}, "observation_type": \"{args.observation_type}\", "current_viewport_only": {args.current_viewport_only}, "viewport_width": {args.viewport_width}, "viewport_height": {args.viewport_height}, "save_trace_enabled": {args.save_trace_enabled}, "sleep_after_execution": {args.sleep_after_execution} }}}}}}'
+    msg = json.dumps(msg)
+    print(msg)
+    return msg
+
 def test(
     args: argparse.Namespace,
     agent: Agent | PromptAgent | TeacherForcingAgent,
     config_file_list: list[str],
+    context
 ) -> None:
     scores = []
     max_steps = args.max_steps
@@ -227,18 +268,26 @@ def test(
         "repeating_action": args.repeating_action_failure_th,
     }
 
-    env = ScriptBrowserEnv(
-        headless=not args.render,
-        slow_mo=args.slow_mo,
-        observation_type=args.observation_type,
-        current_viewport_only=args.current_viewport_only,
-        viewport_size={
-            "width": args.viewport_width,
-            "height": args.viewport_height,
-        },
-        save_trace_enabled=args.save_trace_enabled,
-        sleep_after_execution=args.sleep_after_execution,
-    )
+    init_env_msg = generate_init_env_mcp(args)
+    print('Calling MCP env init')
+    result = call_MCP(context, init_env_msg)
+    print(f'[Agent] Got: {result}')
+
+
+    
+    # TODO: Call guardian to create env
+    #env = ScriptBrowserEnv(
+    #    headless=not args.render,
+    #    slow_mo=args.slow_mo,
+    #    observation_type=args.observation_type,
+    #    current_viewport_only=args.current_viewport_only,
+    #    viewport_size={
+    #        "width": args.viewport_width,
+    #        "height": args.viewport_height,
+    #    },
+    #    save_trace_enabled=args.save_trace_enabled,
+    #    sleep_after_execution=args.sleep_after_execution,
+    #)
 
     for config_file in config_file_list:
         try:
@@ -280,8 +329,8 @@ def test(
             agent.reset(config_file)
             print('[TEO] >>> Reset agent conf file')
             trajectory: Trajectory = []
-            print('[TEO] >>> AAAA')
-            obs, info = env.reset(options={"config_file": config_file})
+            # TODO: Call guardian to reset env
+            #obs, info = env.reset(options={"config_file": config_file})
             print(f'[TEO] >>> Reset env')
             state_info: StateInfo = {"observation": obs, "info": info}
             trajectory.append(state_info)
@@ -427,6 +476,16 @@ if __name__ == "__main__":
     args.sleep_after_execution = 2.0
     prepare(args)
 
+    # TODO: Get id from guardian
+    my_id = 42
+    # TODO: Move in agent runtime
+    context = Context()
+    context.shm_to_guardian = shared_memory.SharedMemory(name=f"shm_to_guard_{my_id}")
+    context.shm_from_guardian = shared_memory.SharedMemory(name=f"shm_from_guard_{my_id}")
+    context.shm_flags = shared_memory.SharedMemory(name=f"shm_flags_{my_id}")
+
+
+
     test_file_list = []
     st_idx = args.test_start_idx
     ed_idx = args.test_end_idx
@@ -447,4 +506,4 @@ if __name__ == "__main__":
         dump_config(args)
 
         agent = construct_agent(args)
-        test(args, agent, test_file_list)
+        test(args, agent, test_file_list, context)

@@ -9,6 +9,10 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+import ast
+import numpy as np
+import base64
+import pickle
 
 import openai
 
@@ -249,10 +253,60 @@ def generate_init_env_mcp(args):
             }
         }
     }
-   # msg = f'{{"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {{"name": "web_server__init_env", "arguments": {{"render": {args.render}, "slow_mo": {args.slow_mo}, "observation_type": \"{args.observation_type}\", "current_viewport_only": {args.current_viewport_only}, "viewport_width": {args.viewport_width}, "viewport_height": {args.viewport_height}, "save_trace_enabled": {args.save_trace_enabled}, "sleep_after_execution": {args.sleep_after_execution} }}}}}}'
     msg = json.dumps(msg)
     print(msg)
     return msg
+
+def generate_reset_env_mcp(config_file):
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "web_server__reset_env", 
+            "arguments": {
+                "config_file": config_file
+            }
+        }
+    }
+    msg = json.dumps(msg)
+    print(msg)
+    return msg
+
+
+def generate_login_mcp(config_file):
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "web_server__login", 
+            "arguments": {
+                "config_file": config_file
+            }
+        }
+    }
+    msg = json.dumps(msg)
+    print(msg)
+    return msg
+
+
+def string_to_dict(json_string):
+    """Reconstruct dict with numpy array from JSON string"""
+    data = json.loads(json_string)
+    reconstructed = {}
+    
+    for key, value in data.items():
+        if isinstance(value, dict) and value.get('_type') == 'ndarray':
+            # Reconstruct numpy array from base64 string
+            array_data = base64.b64decode(value['data'])
+            array = np.frombuffer(array_data, dtype=value['dtype'])
+            reconstructed[key] = array.reshape(value['shape'])
+        else:
+            reconstructed[key] = value
+    
+    return reconstructed
+
 
 def test(
     args: argparse.Namespace,
@@ -275,7 +329,6 @@ def test(
 
 
     
-    # TODO: Call guardian to create env
     #env = ScriptBrowserEnv(
     #    headless=not args.render,
     #    slow_mo=args.slow_mo,
@@ -295,33 +348,39 @@ def test(
                 config_file, args.result_dir, args.action_set_tag
             )
 
+            login_mcp = generate_login_mcp(config_file)
+            print('Calling MCP login')
+            result = call_MCP(context, login_mcp)
+            print(f'[Agent] Got login result: {result}')
+
             # get intent
             with open(config_file) as f:
                 _c = json.load(f)
                 intent = _c["intent"]
                 task_id = _c["task_id"]
                 # automatically login
-                if _c["storage_state"]:
-                    cookie_file_name = os.path.basename(_c["storage_state"])
-                    comb = get_site_comb_from_filepath(cookie_file_name)
-                    temp_dir = tempfile.mkdtemp()
-                    # subprocess to renew the cookie
-                    subprocess.run(
-                        [
-                            "python",
-                            "browser_env/auto_login.py",
-                            "--auth_folder",
-                            temp_dir,
-                            "--site_list",
-                            *comb,
-                        ]
-                    )
-                    _c["storage_state"] = f"{temp_dir}/{cookie_file_name}"
-                    assert os.path.exists(_c["storage_state"])
-                    # update the config file
-                    config_file = f"{temp_dir}/{os.path.basename(config_file)}"
-                    with open(config_file, "w") as f:
-                        json.dump(_c, f)
+                #if _c["storage_state"]:
+                #    cookie_file_name = os.path.basename(_c["storage_state"])
+                #    comb = get_site_comb_from_filepath(cookie_file_name)
+                #    temp_dir = tempfile.mkdtemp()
+                #    # subprocess to renew the cookie
+                #    # TODO: Do I need to do this on the server?
+                #    subprocess.run(
+                #        [
+                #            "python",
+                #            "browser_env/auto_login.py",
+                #            "--auth_folder",
+                #            temp_dir,
+                #            "--site_list",
+                #            *comb,
+                #        ]
+                #    )
+                #    _c["storage_state"] = f"{temp_dir}/{cookie_file_name}"
+                #    assert os.path.exists(_c["storage_state"])
+                #    # update the config file
+                #    config_file = f"{temp_dir}/{os.path.basename(config_file)}"
+                #    with open(config_file, "w") as f:
+                #        json.dump(_c, f)
 
             logger.info(f"[Config file]: {config_file}")
             logger.info(f"[Intent]: {intent}")
@@ -331,6 +390,19 @@ def test(
             trajectory: Trajectory = []
             # TODO: Call guardian to reset env
             #obs, info = env.reset(options={"config_file": config_file})
+            reset_mcp = generate_reset_env_mcp(config_file)
+            print('Calling MCP reset init')
+            result = call_MCP(context, reset_mcp)
+            result = json.loads(result)["content"]
+            result = result.split('---=---')
+            print(f"Raw obs: {result[0]}")
+            obs = json.loads(result[0])
+            print(f"!!! [TEOO] Obs: {type(obs)}")
+            #info = string_to_dict(result[1])
+            info = result[1]
+            print(f"!!! [TEOO] Info: {type(info)}")
+            print(f'[Agent] Got obs: {obs}')
+            print(f'[Agent] Got info: {info}')
             print(f'[TEO] >>> Reset env')
             state_info: StateInfo = {"observation": obs, "info": info}
             trajectory.append(state_info)
@@ -353,6 +425,7 @@ def test(
                         )
                         print('[TEO] >>> Generated next action')
                     except ValueError as e:
+                        print("[TEO] >>>> GOT error message: {str(e)}")
                         # get the error message
                         action = create_stop_action(f"ERROR: {str(e)}")
 
@@ -373,6 +446,7 @@ def test(
                 print(f"Generated action: {action_str}")
 
                 if action["action_type"] == ActionTypes.STOP:
+                    print(f'[TEO] Action type was STOP')
                     break
 
                 obs, _, terminated, _, info = env.step(action)
@@ -418,6 +492,7 @@ def test(
 
         render_helper.close()
 
+    # TODO: Implement
     env.close()
     if len(scores) != 0:
         logger.info(f"Average score: {sum(scores) / len(scores)}")

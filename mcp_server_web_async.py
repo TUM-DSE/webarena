@@ -9,13 +9,15 @@ from browser_env import (
 from browser_env.auto_login import get_site_comb_from_filepath
 from mcp.server.fastmcp import FastMCP
 import asyncio
-import json
+import simplejson as json
 import os
 import tempfile
 import subprocess
 import numpy as np
 import base64
 import pickle
+import ast
+import gzip
 
 mcp = FastMCP("web")
 global_env = None
@@ -77,6 +79,55 @@ async def login(config_file) -> str:
 
 
 @mcp.tool()
+async def step_env(action: str) -> str:
+    """
+    Perform an action on the environment
+    """
+    global global_env
+    #action = json.loads(action)
+    action = pickle.loads(ast.literal_eval(action))
+    #return f'Unpickled action: {action}'
+
+    def _step(action):
+        return global_env.step(action)
+
+    obs, arg2, terminated, arg4, info = await asyncio.to_thread(_step, action)
+    obs['image'] = None
+    page = info['page']
+    info['page'] = None
+
+    page_dict = {
+            "url": page.url,
+            "content": page.content
+    }
+
+    obs = json.dumps(obs)
+    obs = gzip.compress(obs.encode('utf-8'))
+    obs = base64.b64encode(obs).decode('ascii')
+
+    info = json.dumps(info)
+    info = gzip.compress(info.encode('utf-8'))
+    info = base64.b64encode(info).decode('ascii')
+
+    page = json.dumps(page_dict)
+    page = gzip.compress(page.encode('utf-8'))
+    page = base64.b64encode(page).decode('ascii')
+
+    #terminated = json.dumps(terminated)
+    #terminated = "terminated"
+    #arg2 = json.dumps(arg2)
+    #arg4 = json.dumps(arg4)
+    #obs = "obs"
+    info = "info"
+    arg2 = "arg2"
+    arg4 = "arg4"
+    age = "page"
+    return f'{obs} ---=--- {arg2} ---=--- {terminated} ---=--- {arg4} ---=--- {info} ---=--- {page}'
+
+
+
+
+@mcp.tool()
 async def reset_env(config_file: str) -> str:
     """
     Reset the environment
@@ -91,13 +142,22 @@ async def reset_env(config_file: str) -> str:
     
     obs, info = await asyncio.to_thread(_reset)
     obs['image'] = None
+    page = info['page']
+    info['page'] = None
+
+    page_dict = {
+            "url": page.url,
+            "content": page.content
+    }
     #obs = dict_to_string(obs)
     #info = dict_to_string(info)
-    #obs = pickle.dumps(obs)#.encode('base64', 'strict')
+    #obs = pickle.dumps(obs)
+   # obs = base64.b64encode(obs).decode('ascii')
     #info = pickle.dumps(info)#.encode('base64', 'strict') 
     obs = json.dumps(obs)
-    info = None
-    return f'{obs} ---=--- {info}'
+    info = json.dumps(info)
+    page = json.dumps(page_dict)
+    return f'{obs} ---=--- {info} ---=--- {page}'
 
 @mcp.tool()
 async def init_env(render: bool, slow_mo: int, observation_type: str,

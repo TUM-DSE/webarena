@@ -1,7 +1,7 @@
 """Script to run end-to-end evaluation on the benchmark"""
 import argparse
 import glob
-import json
+import simplejson as json
 import logging
 import os
 import random
@@ -13,6 +13,7 @@ import ast
 import numpy as np
 import base64
 import pickle
+import gzip
 
 import openai
 
@@ -30,6 +31,7 @@ from browser_env import (
     StateInfo,
     Trajectory,
     create_stop_action,
+    DetachedPage,
 )
 from browser_env.actions import is_equivalent
 from browser_env.auto_login import get_site_comb_from_filepath
@@ -307,6 +309,50 @@ def string_to_dict(json_string):
     
     return reconstructed
 
+def dict_to_string(data):
+    """Convert dict with numpy array to JSON string"""
+    serializable = {}
+    for key, value in data.items():
+        if isinstance(value, np.ndarray):
+            # Convert numpy array to base64 string
+            serializable[key] = {
+                '_type': 'ndarray',
+                'data': base64.b64encode(value.tobytes()).decode('utf-8'),
+                'shape': value.shape,
+                'dtype': str(value.dtype)
+            }
+        else:
+            serializable[key] = value
+
+    return json.dumps(serializable)
+
+
+
+def generate_step_env_mcp(action):
+
+#    print("[TEO]: removing coords from aciton")
+#    action['coords']=None
+    print("[TEO]: Murating the action")
+    action = str(pickle.dumps(action))
+    print(f"[TEO]: Pickled action: {action}")
+   # action = json.dumps(action)
+   # print(f"[TEO]: Jsoned pickled action: {action}")
+
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "web_server__step_env", 
+            "arguments": {
+                "action": action
+            }
+        }
+    }
+    msg = json.dumps(msg)
+    #msg = dict_to_string(msg)
+    print(f'Step msg: {msg}')
+    return msg
 
 def test(
     args: argparse.Namespace,
@@ -395,11 +441,19 @@ def test(
             result = call_MCP(context, reset_mcp)
             result = json.loads(result)["content"]
             result = result.split('---=---')
-            print(f"Raw obs: {result[0]}")
+            #print(f"Raw obs: {result[0]}")
+            print(f"Raw page: {result[2]}")
             obs = json.loads(result[0])
+            obs['image'] = np.ones((720, 1280, 4), dtype=np.uint8) * 255 
+            #obs = picke.loads(base64.b64decode(result[0]))
             print(f"!!! [TEOO] Obs: {type(obs)}")
-            #info = string_to_dict(result[1])
-            info = result[1]
+            info = json.loads(result[1])
+            page_dict = json.loads(result[2])
+            print(f'!!! [TEO] Page dict: {page_dict}')
+            page = DetachedPage(url=page_dict['url'], content=page_dict['content'])
+            print(f'!!! [TEO] Page: {page}')
+            info['page'] = page
+            #info = result[1]
             print(f"!!! [TEOO] Info: {type(info)}")
             print(f'[Agent] Got obs: {obs}')
             print(f'[Agent] Got info: {info}')
@@ -449,7 +503,31 @@ def test(
                     print(f'[TEO] Action type was STOP')
                     break
 
-                obs, _, terminated, _, info = env.step(action)
+                #obs, _, terminated, _, info = env.step(action)
+                step_mcp = generate_step_env_mcp(action)
+                print('Calling MCP env step')
+                result = call_MCP(context, step_mcp)
+                print('Called MCP env step')
+                result = json.loads(result)["content"]
+                result = result.split('---=---')
+                print(f"[Agent] Raw obs: {result[0]}")
+                #obs = json.loads(result[0])
+                obs = result[0]
+                obs = base64.b64decode(obs)
+                obs = gzip.decompress(obs)
+
+                print(f"[Agent] Decompressed obs: {obs}")
+                obs = json.loads(obs)
+                print(f"[Agent] Reconstructed obs: {obs}")
+
+                obs['image'] = np.ones((720, 1280, 4), dtype=np.uint8) * 255 
+                # TODO: Checl terminated type
+                terminated = json.loads(result[2])
+                page_dict = json.loads(result[5])
+                page = DetachedPage(url=page_dict['url'], content=page_dict['content'])
+                info = json.loads(result[4])
+                info['page'] = page
+
                 state_info = {"observation": obs, "info": info}
                 trajectory.append(state_info)
 

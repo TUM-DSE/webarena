@@ -23,6 +23,7 @@ from llms import (
     lm_config,
 )
 from llms.tokenizers import Tokenizer
+import time
 
 
 class Agent:
@@ -36,6 +37,7 @@ class Agent:
         self, trajectory: Trajectory, intent: str, meta_data: Any
     ) -> Action:
         """Predict the next action given the observation"""
+        print("[TEO] >>> Inside not implemented next action")
         raise NotImplementedError
 
     def reset(
@@ -84,6 +86,7 @@ class TeacherForcingAgent(Agent):
         self, trajectory: Trajectory, intent: str, meta_data: Any
     ) -> Action:
         """Predict the next action given the observation"""
+        print("[TEO] >>> Inside teacher next action")
         return self.actions.pop(0)
 
     def reset(
@@ -118,15 +121,23 @@ class PromptAgent(Agent):
 
     @beartype
     def next_action(
-        self, trajectory: Trajectory, intent: str, meta_data: dict[str, Any]
+        self, trajectory: Trajectory, intent: str, meta_data: dict[str, Any], ctx, f
     ) -> Action:
+        print(f'[TEO] >>> Inside next action')
         prompt = self.prompt_constructor.construct(
             trajectory, intent, meta_data
         )
+        print("[TEO] Outside of prompt constructor!")
+        print(f'[TEO] Prompt: {prompt}')
         lm_config = self.lm_config
         n = 0
         while True:
-            response = call_llm(lm_config, prompt)
+            start = time.time()
+            response = call_llm(lm_config, prompt, ctx)
+            end = time.time()
+            #f.write(f'LLM Turn {n + 1}: {end - start} s\n')
+            f += f'LLM Turn {n + 1}: {end - start} s\n'
+            print(f'[TEO] >>> Called LLM')
             force_prefix = self.prompt_constructor.instruction[
                 "meta_data"
             ].get("force_prefix", "")

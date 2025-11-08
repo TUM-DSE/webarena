@@ -13,6 +13,7 @@ import ast
 import numpy as np
 import base64
 import pickle
+import dill
 import gzip
 
 import openai
@@ -46,6 +47,7 @@ from guardian_api import llm
 from guardian_api import extract_MCP
 from guardian_api import call_MCP
 from guardian_api import get_tools
+from guardian_api import transmit_log
 
 
 class Context:
@@ -56,6 +58,8 @@ class Context:
         self.request_flag = 0
         self.response_flag = 1
 
+#f_measure = open("agent_timings.txt", "w")
+f_measure = ""
 
 LOG_FOLDER = "log_files"
 Path(LOG_FOLDER).mkdir(parents=True, exist_ok=True)
@@ -354,6 +358,51 @@ def generate_step_env_mcp(action):
     print(f'Step msg: {msg}')
     return msg
 
+def generate_close_env_mcp():
+
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "web_server__close_env", 
+            "arguments": {
+            }
+        }
+    }
+    msg = json.dumps(msg)
+    return msg
+
+def generate_get_page_mcp():
+
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "web_server__get_page_env", 
+            "arguments": {
+            }
+        }
+    }
+    msg = json.dumps(msg)
+    return msg
+
+def generate_get_client_mcp():
+
+    msg = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": "web_server__get_client_env", 
+            "arguments": {
+            }
+        }
+    }
+    msg = json.dumps(msg)
+    return msg
+
 def test(
     args: argparse.Namespace,
     agent: Agent | PromptAgent | TeacherForcingAgent,
@@ -370,7 +419,13 @@ def test(
 
     init_env_msg = generate_init_env_mcp(args)
     print('Calling MCP env init')
+    start = time.time()
     result = call_MCP(context, init_env_msg)
+    end = time.time()
+    #f_measure.write(f"\tEnv init: {end - start} s\n")
+    global f_measure
+    f_measure += f"Env init: {end - start} s\n"
+
     print(f'[Agent] Got: {result}')
 
 
@@ -442,27 +497,31 @@ def test(
             result = json.loads(result)["content"]
             result = result.split('---=---')
             #print(f"Raw obs: {result[0]}")
-            print(f"Raw page: {result[2]}")
+            #print(f"Raw page: {result[2]}")
             obs = json.loads(result[0])
             obs['image'] = np.ones((720, 1280, 4), dtype=np.uint8) * 255 
             #obs = picke.loads(base64.b64decode(result[0]))
-            print(f"!!! [TEOO] Obs: {type(obs)}")
+            #print(f"!!! [TEOO] Obs: {type(obs)}")
             info = json.loads(result[1])
             page_dict = json.loads(result[2])
-            print(f'!!! [TEO] Page dict: {page_dict}')
+            #print(f'!!! [TEO] Page dict: {page_dict}')
             page = DetachedPage(url=page_dict['url'], content=page_dict['content'])
-            print(f'!!! [TEO] Page: {page}')
+            #print(f'!!! [TEO] Page: {page}')
             info['page'] = page
             #info = result[1]
-            print(f"!!! [TEOO] Info: {type(info)}")
-            print(f'[Agent] Got obs: {obs}')
-            print(f'[Agent] Got info: {info}')
+            #print(f"!!! [TEOO] Info: {type(info)}")
+            #print(f'[Agent] Got obs: {obs}')
+            #print(f'[Agent] Got info: {info}')
             print(f'[TEO] >>> Reset env')
             state_info: StateInfo = {"observation": obs, "info": info}
             trajectory.append(state_info)
 
             meta_data = {"action_history": ["None"]}
+            turn = 1
             while True:
+                #f_measure.write(f"--- Turn {turn} ---\n")
+                f_measure += f"--- Turn {turn} ---\n"
+                t_start = time.time()
                 print('[TEO] >>> Test early stop action')
                 early_stop_flag, stop_info = early_stop(
                     trajectory, max_steps, early_stop_thresholds
@@ -475,7 +534,7 @@ def test(
                     try:
                         print('[TEO] >>> Generating next action')
                         action = agent.next_action(
-                            trajectory, intent, meta_data=meta_data
+                            trajectory, intent, meta_data=meta_data, ctx=context, f=f_measure
                         )
                         print('[TEO] >>> Generated next action')
                     except ValueError as e:
@@ -501,7 +560,11 @@ def test(
 
                 if action["action_type"] == ActionTypes.STOP:
                     print(f'[TEO] Action type was STOP')
+                    t_end = time.time()
+                    #f_measure.write(f'Turn time: {t_end - t_start} s\n')
+                    f_measure += f'Turn time: {t_end - t_start} s\n'
                     break
+                turn += 1
 
                 #obs, _, terminated, _, info = env.step(action)
                 step_mcp = generate_step_env_mcp(action)
@@ -510,38 +573,73 @@ def test(
                 print('Called MCP env step')
                 result = json.loads(result)["content"]
                 result = result.split('---=---')
-                print(f"[Agent] Raw obs: {result[0]}")
+                #print(f"[Agent] Raw obs: {result[0]}")
                 #obs = json.loads(result[0])
                 obs = result[0]
                 obs = base64.b64decode(obs)
                 obs = gzip.decompress(obs)
-
-                print(f"[Agent] Decompressed obs: {obs}")
                 obs = json.loads(obs)
-                print(f"[Agent] Reconstructed obs: {obs}")
+
+               # print(f"[Agent] Decompressed obs: {obs}")
+               # print(f"[Agent] Reconstructed obs: {obs}")
 
                 obs['image'] = np.ones((720, 1280, 4), dtype=np.uint8) * 255 
                 # TODO: Checl terminated type
-                terminated = json.loads(result[2])
-                page_dict = json.loads(result[5])
+                #print(f"Loading terminated: {type(result[2])} {result[2]}")
+                terminated = result[2] == "True"
+                #print(f"Loading terminated new: {type(result[2])} {terminated}")
+
+                page_dict = result[5]
+                page_dict = base64.b64decode(page_dict)
+                page_dict = gzip.decompress(page_dict)
+                page_dict = json.loads(page_dict)
+                #print(f"Reconstructed page: {page_dict}")
+
                 page = DetachedPage(url=page_dict['url'], content=page_dict['content'])
-                info = json.loads(result[4])
+
+                info = result[4]
+                info = base64.b64decode(info)
+                info = gzip.decompress(info)
+                info = json.loads(info)
+                #print(f"Reconstructed info: {info}")
                 info['page'] = page
 
                 state_info = {"observation": obs, "info": info}
                 trajectory.append(state_info)
 
+                t_end = time.time()
+                f_measure += f'Turn time: {t_end - t_start} s\n'
                 if terminated:
                     # add a action place holder
                     trajectory.append(create_stop_action(""))
                     break
 
+            print(f"[Agent] Log: {f_measure}")
+            transmit_log(context, f_measure)
+            return
+
+
+            get_page_msg = generate_get_page_mcp()
+            result = call_MCP(context, get_page_msg)
+            print(f"Env page result: {result}")
+            #env_page = pickle.loads(ast.literal_eval(result))
+            env_page = dill.loads(ast.literal_eval(result))
+            print(f"Env page: {env_page}")
+
+            get_client_msg = generate_get_client_mcp()
+            result = call_MCP(context, get_client_msg)
+            print(f"Env client result: {result}")
+            env_client = pickle.loads(ast.literal_eval(result))
+            print(f"Env client: {env_client}")
+            #env_client = json.loads(result)
+            
+
             evaluator = evaluator_router(config_file)
             score = evaluator(
                 trajectory=trajectory,
                 config_file=config_file,
-                page=env.page,
-                client=env.get_page_client(env.page),
+                page=env_page,
+                client=env_client #.get_page_client(env.page),
             )
 
             scores.append(score)
@@ -571,7 +669,13 @@ def test(
         render_helper.close()
 
     # TODO: Implement
-    env.close()
+    #env.close()
+    close_env_msg = generate_close_env_mcp()
+    print('Calling MCP env close')
+    result = call_MCP(context, close_env_msg)
+    print(f'Called MCP env step: {result}')
+    
+
     if len(scores) != 0:
         logger.info(f"Average score: {sum(scores) / len(scores)}")
     else:
@@ -625,6 +729,10 @@ def dump_config(args: argparse.Namespace) -> None:
 
 
 if __name__ == "__main__":
+    
+    #f_measure.write(f'Agent start timestampt: {time.time()}\n')
+    f_measure += f'Agent start timestampt: {time.time()}\n'
+
     args = config()
     args.sleep_after_execution = 2.0
     prepare(args)
@@ -632,10 +740,14 @@ if __name__ == "__main__":
     # TODO: Get id from guardian
     my_id = 42
     # TODO: Move in agent runtime
+    start = time.time()
     context = Context()
     context.shm_to_guardian = shared_memory.SharedMemory(name=f"shm_to_guard_{my_id}")
     context.shm_from_guardian = shared_memory.SharedMemory(name=f"shm_from_guard_{my_id}")
     context.shm_flags = shared_memory.SharedMemory(name=f"shm_flags_{my_id}")
+    end = time.time()
+    #f_measure.write(f'Agent connected to shared memory: {end - start} s')
+    f_measure += f'Agent connected to shared memory: {end - start} s\n'
 
 
 

@@ -16,6 +16,7 @@ import subprocess
 import numpy as np
 import base64
 import pickle
+import dill
 import ast
 import gzip
 
@@ -77,6 +78,36 @@ async def login(config_file) -> str:
 #@mcp.tool()
 #async def env_step(action):
 
+@mcp.tool()
+async def get_page_env() -> str:
+   global global_env
+   page = global_env.page
+   #return str(page)
+   page = dill.dumps(page)
+   return page
+
+
+@mcp.tool()
+async def get_client_env() -> str:
+   global global_env
+   client = global_env.get_page_client(global_env.page)
+   client = str(pickle.dumps(client))
+   return client
+
+@mcp.tool()
+async def close_env() -> str:
+    """
+    Close the environment
+    """
+    global global_env
+    def _close():
+        return global_env.close()
+    
+    await asyncio.to_thread(_close)
+
+    return "Environment closed"
+
+
 
 @mcp.tool()
 async def step_env(action: str) -> str:
@@ -118,10 +149,10 @@ async def step_env(action: str) -> str:
     #arg2 = json.dumps(arg2)
     #arg4 = json.dumps(arg4)
     #obs = "obs"
-    info = "info"
+    #info = "info"
     arg2 = "arg2"
     arg4 = "arg4"
-    age = "page"
+    #page = "page"
     return f'{obs} ---=--- {arg2} ---=--- {terminated} ---=--- {arg4} ---=--- {info} ---=--- {page}'
 
 

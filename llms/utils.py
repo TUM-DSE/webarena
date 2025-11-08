@@ -9,6 +9,7 @@ from llms import (
 )
 import requests
 import json
+from guardian_api import llm
 
 APIInput = str | list[Any] | dict[str, Any]
 
@@ -16,9 +17,10 @@ APIInput = str | list[Any] | dict[str, Any]
 def call_llm(
     lm_config: lm_config.LMConfig,
     prompt: APIInput,
+    ctx
 ) -> str:
     response: str
-    print(f'[TEO] >>>> Calling LLM: {lm_config.provider}: Prompt: {prompt}\n')
+    #print(f'[TEO] >>>> Calling LLM: {lm_config.provider}: Prompt: {prompt}\n')
     if lm_config.provider == "openai_old":
         if lm_config.mode == "chat":
             assert isinstance(prompt, list)
@@ -59,14 +61,15 @@ def call_llm(
         nb_tokens = lm_config.gen_config["max_tokens"]
         print('[TEO] >>>> Doing local inference')
         assert isinstance(prompt, str)
-        url = "http://192.168.32.10:8080/completion"
-        headers = {"Content-Type": "application/json"}
-        data = {
-            "prompt": prompt,
-            "n_predict": nb_tokens,
-        }
-        response = requests.post(url, headers=headers, json=data, timeout=None)
-        response = json.loads(response.text)['content']
+        #url = "http://192.168.32.10:8080/completion"
+        #headers = {"Content-Type": "application/json"}
+        #data = {
+        #    "prompt": prompt,
+        #    "n_predict": nb_tokens,
+        #}
+        #response = requests.post(url, headers=headers, json=data, timeout=None)
+        #response = json.loads(response.text)['content']
+        response = llm(ctx, prompt, nb_tokens)
         print(f'LLM response: {response}')
 
 

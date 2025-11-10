@@ -533,7 +533,7 @@ def test(
                 else:
                     try:
                         print('[TEO] >>> Generating next action')
-                        action = agent.next_action(
+                        action, f_measure = agent.next_action(
                             trajectory, intent, meta_data=meta_data, ctx=context, f=f_measure
                         )
                         print('[TEO] >>> Generated next action')
@@ -674,6 +674,9 @@ def test(
     print('Calling MCP env close')
     result = call_MCP(context, close_env_msg)
     print(f'Called MCP env step: {result}')
+    print(f"[Agent] Log: {f_measure}")
+    transmit_log(context, f_measure)
+    return 
     
 
     if len(scores) != 0:

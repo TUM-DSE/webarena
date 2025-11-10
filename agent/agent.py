@@ -122,7 +122,7 @@ class PromptAgent(Agent):
     @beartype
     def next_action(
         self, trajectory: Trajectory, intent: str, meta_data: dict[str, Any], ctx, f
-    ) -> Action:
+    ):
         print(f'[TEO] >>> Inside next action')
         prompt = self.prompt_constructor.construct(
             trajectory, intent, meta_data
@@ -143,10 +143,13 @@ class PromptAgent(Agent):
             ].get("force_prefix", "")
             response = f"{force_prefix}{response}"
             n += 1
+            print(f'[TEO] >>> Called LLM - incremented N')
             try:
+                print(f'[TEO] >>> Called LLM - Extracting action from response {response} ')
                 parsed_response = self.prompt_constructor.extract_action(
                     response
                 )
+                print(f'[TEO] >>>  Called LLM - Extracted {parsed_response}')
                 if self.action_set_tag == "id_accessibility_tree":
                     action = create_id_based_action(parsed_response)
                 elif self.action_set_tag == "playwright":
@@ -155,16 +158,22 @@ class PromptAgent(Agent):
                     raise ValueError(
                         f"Unknown action type {self.action_set_tag}"
                     )
+                print(f'[TEO] >>> Called LLM - accessing raw prediction')
                 action["raw_prediction"] = response
+                print(f'[TEO] >>> Called LLM - accessed raw prediction')
                 break
             except ActionParsingError as e:
+                print(f'[TEO] >>> Called LLM - Exception: {e}')
                 if n >= lm_config.gen_config["max_retry"]:
+                    print(f'[TEO] >>> Called LLM - Creating none action')
                     action = create_none_action()
+                    print(f'[TEO] >>> Called LLM - Accessing raw prediction')
                     action["raw_prediction"] = response
+                    print(f'[TEO] >>> Called LLM - breaking in exception')
                     break
 
         print(f'[TEO] >>> ACTION: {action}')
-        return action
+        return action, f
 
     def reset(self, test_config_file: str) -> None:
         pass

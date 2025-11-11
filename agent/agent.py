@@ -23,6 +23,7 @@ from llms import (
     lm_config,
 )
 from llms.tokenizers import Tokenizer
+import time
 
 
 class Agent:
@@ -118,24 +119,33 @@ class PromptAgent(Agent):
 
     @beartype
     def next_action(
-        self, trajectory: Trajectory, intent: str, meta_data: dict[str, Any]
-    ) -> Action:
+        self, trajectory: Trajectory, intent: str, meta_data: dict[str, Any], f
+    ):
         prompt = self.prompt_constructor.construct(
             trajectory, intent, meta_data
         )
         lm_config = self.lm_config
         n = 0
         while True:
+            start = time.time()
             response = call_llm(lm_config, prompt)
+            end = time.time()
+            f += f'LLM Turn {n + 1}: {end - start} s\n'
+            print(' >> Called LLM')
+
             force_prefix = self.prompt_constructor.instruction[
                 "meta_data"
             ].get("force_prefix", "")
             response = f"{force_prefix}{response}"
             n += 1
+
+            print(' >> Constructed prompt')
+
             try:
                 parsed_response = self.prompt_constructor.extract_action(
                     response
                 )
+                print(' >> Parsed response')
                 if self.action_set_tag == "id_accessibility_tree":
                     action = create_id_based_action(parsed_response)
                 elif self.action_set_tag == "playwright":
@@ -146,14 +156,16 @@ class PromptAgent(Agent):
                     )
                 action["raw_prediction"] = response
                 break
-            except ActionParsingError as e:
+            except Exception as e:
+                print("Parsing error")
                 if n >= lm_config.gen_config["max_retry"]:
                     action = create_none_action()
                     action["raw_prediction"] = response
                     break
 
+        print('Printing action')
         print(f'[TEO] >>> ACTION: {action}')
-        return action
+        return action, f
 
     def reset(self, test_config_file: str) -> None:
         pass

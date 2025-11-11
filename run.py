@@ -35,6 +35,8 @@ from browser_env.helper_functions import (
 )
 from evaluation_harness import evaluator_router
 
+from category_util import *
+
 LOG_FOLDER = "log_files"
 Path(LOG_FOLDER).mkdir(parents=True, exist_ok=True)
 LOG_FILE_NAME = f"{LOG_FOLDER}/log_{time.strftime('%Y%m%d%H%M%S', time.localtime())}_{random.randint(0, 10000)}.log"
@@ -55,6 +57,7 @@ formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
 console_handler.setFormatter(formatter)
 file_handler.setFormatter(formatter)
 
+f_measure = ""
 
 def config() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -213,6 +216,21 @@ def early_stop(
 
     return False, ""
 
+def get_category(_c) -> str:
+    global categories
+    selected_cat = None
+    for cat in categories.keys():
+        if _c['intent_template'].strip() in categories[cat]:
+            selected_cat = cat
+            break
+    if selected_cat == None:
+        selected_cat = "Unknown"
+
+    return selected_cat
+
+
+
+
 
 def test(
     args: argparse.Namespace,
@@ -227,21 +245,48 @@ def test(
         "repeating_action": args.repeating_action_failure_th,
     }
 
+
+
+    global f_measure
+    env = None
+
+    variant = 'CVM'
+
+    if variant == 'VM':
+        sleep_time = 6.52
+    elif variant == "CVM":
+        sleep_time = 18.12
+    elif variant == "Container":
+        sleep_time = 0.03
+
+    env_s = time.time()
     env = ScriptBrowserEnv(
-        headless=not args.render,
-        slow_mo=args.slow_mo,
-        observation_type=args.observation_type,
-        current_viewport_only=args.current_viewport_only,
-        viewport_size={
-            "width": args.viewport_width,
-            "height": args.viewport_height,
-        },
-        save_trace_enabled=args.save_trace_enabled,
-        sleep_after_execution=args.sleep_after_execution,
-    )
+         headless=not args.render,
+         slow_mo=args.slow_mo,
+         observation_type=args.observation_type,
+         current_viewport_only=args.current_viewport_only,
+         viewport_size={
+             "width": args.viewport_width,
+             "height": args.viewport_height,
+         },
+         save_trace_enabled=args.save_trace_enabled,
+         sleep_after_execution=args.sleep_after_execution,
+     )
+    env_end = time.time()
+
+    env_time = env_end - env_s
 
     for config_file in config_file_list:
         try:
+            f_measure = ""
+            agent_nb = Path(config_file).stem
+            f_measure += f"**** Agent {agent_nb} ****\n"
+            ag_start = time.time()
+            f_measure += f'Starting agent timestamp: {ag_start} s\n'
+            time.sleep(sleep_time) 
+            f_measure += f'Agent start timestampt: {time.time()}\n'
+            time.sleep(env_time)
+            f_measure += f"Env init: {env_time} s\n"
             render_helper = RenderHelper(
                 config_file, args.result_dir, args.action_set_tag
             )
@@ -251,28 +296,34 @@ def test(
                 _c = json.load(f)
                 intent = _c["intent"]
                 task_id = _c["task_id"]
+                f_measure += f'Intent template: {_c["intent_template"]}\n'
+                category = get_category(_c)
+                f_measure += f'Category: {category}\n'
+
                 # automatically login
-                if _c["storage_state"]:
-                    cookie_file_name = os.path.basename(_c["storage_state"])
-                    comb = get_site_comb_from_filepath(cookie_file_name)
-                    temp_dir = tempfile.mkdtemp()
-                    # subprocess to renew the cookie
-                    subprocess.run(
-                        [
-                            "python",
-                            "browser_env/auto_login.py",
-                            "--auth_folder",
-                            temp_dir,
-                            "--site_list",
-                            *comb,
-                        ]
-                    )
-                    _c["storage_state"] = f"{temp_dir}/{cookie_file_name}"
-                    assert os.path.exists(_c["storage_state"])
-                    # update the config file
-                    config_file = f"{temp_dir}/{os.path.basename(config_file)}"
-                    with open(config_file, "w") as f:
-                        json.dump(_c, f)
+                #if _c["storage_state"]:
+                #    cookie_file_name = os.path.basename(_c["storage_state"])
+                #    comb = get_site_comb_from_filepath(cookie_file_name)
+                #    temp_dir = tempfile.mkdtemp()
+                #    # subprocess to renew the cookie
+                #    subprocess.run(
+                #        [
+                #            "python",
+                #            "browser_env/auto_login.py",
+                #            "--auth_folder",
+                #            temp_dir,
+                #            "--site_list",
+                #            *comb,
+                #        ]
+                #    )
+                #    _c["storage_state"] = f"{temp_dir}/{cookie_file_name}"
+                #    #_c["storage_state"] = f"{Path.cwd()}/config_files/{cookie_file_name}"
+                #    assert os.path.exists(_c["storage_state"])
+                #    # update the config file
+                #    config_file = f"{temp_dir}/{os.path.basename(config_file)}"
+                #    #config_file = f"{Path.cwd()}/config_files/{os.path.basename(config_file)}"
+                #    with open(config_file, "w") as f:
+                #        json.dump(_c, f)
 
             logger.info(f"[Config file]: {config_file}")
             logger.info(f"[Intent]: {intent}")
@@ -281,13 +332,20 @@ def test(
             print('[TEO] >>> Reset agent conf file')
             trajectory: Trajectory = []
             print('[TEO] >>> AAAA')
-            obs, info = env.reset(options={"config_file": config_file})
+            print(f"Config file: {config_file}")
+            #obs, info = env.reset(options={"config_file": config_file})
+            obs, info = env.reset()
+            print(f"!!![TEOOO] >>> Obs: {type(obs)} - {obs}")
+            print(f"!!![TEOOO] >>> info: {type(info)} - {info}")
             print(f'[TEO] >>> Reset env')
             state_info: StateInfo = {"observation": obs, "info": info}
             trajectory.append(state_info)
 
             meta_data = {"action_history": ["None"]}
+            turn = 1
             while True:
+                f_measure += f"--- Turn {turn} ---\n"
+                t_start = time.time()
                 print('[TEO] >>> Test early stop action')
                 early_stop_flag, stop_info = early_stop(
                     trajectory, max_steps, early_stop_thresholds
@@ -299,8 +357,8 @@ def test(
                 else:
                     try:
                         print('[TEO] >>> Generating next action')
-                        action = agent.next_action(
-                            trajectory, intent, meta_data=meta_data
+                        action, f_measure = agent.next_action(
+                            trajectory, intent, meta_data=meta_data, f=f_measure
                         )
                         print('[TEO] >>> Generated next action')
                     except ValueError as e:
@@ -324,16 +382,32 @@ def test(
                 print(f"Generated action: {action_str}")
 
                 if action["action_type"] == ActionTypes.STOP:
+                    t_end = time.time()
+                    print(f"AAA >> Turn time: {t_end - t_start} s")
+                    f_measure += f'Turn time: {t_end - t_start} s\n'
                     break
+                turn += 1
 
                 obs, _, terminated, _, info = env.step(action)
                 state_info = {"observation": obs, "info": info}
                 trajectory.append(state_info)
 
+                t_end = time.time()
+                f_measure += f'Turn time: {t_end - t_start} s\n'
+
                 if terminated:
                     # add a action place holder
                     trajectory.append(create_stop_action(""))
                     break
+
+            ag_end = time.time()
+            f_measure += f'Agent terminated timestamp: {ag_end}\n'
+            f_measure += f'Agent end-to-end: {ag_end - ag_start} s\n'
+            print(f"AAA -> End to end:{ag_end - ag_start} s")
+
+            print(">>> Writing to file\n")
+            with open(f'webarena_{variant}_results.txt', 'a') as f_res:
+                f_res.write(f'{f_measure}\n\n')
 
             evaluator = evaluator_router(config_file)
             score = evaluator(
@@ -430,10 +504,12 @@ if __name__ == "__main__":
     test_file_list = []
     st_idx = args.test_start_idx
     ed_idx = args.test_end_idx
+    print(f'st_idx: {st_idx}, ed_idx: {ed_idx}')
     for i in range(st_idx, ed_idx):
+        print("Adding file")
         test_file_list.append(f"config_files/{i}.json")
-    if "debug" not in args.result_dir:
-        test_file_list = get_unfinished(test_file_list, args.result_dir)
+    #if "debug" not in args.result_dir:
+    #    test_file_list = get_unfinished(test_file_list, args.result_dir)
 
     if len(test_file_list) == 0:
         logger.info("No task left to run")

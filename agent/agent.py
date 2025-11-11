@@ -162,7 +162,7 @@ class PromptAgent(Agent):
                 action["raw_prediction"] = response
                 print(f'[TEO] >>> Called LLM - accessed raw prediction')
                 break
-            except ActionParsingError as e:
+            except Exception as e:
                 print(f'[TEO] >>> Called LLM - Exception: {e}')
                 if n >= lm_config.gen_config["max_retry"]:
                     print(f'[TEO] >>> Called LLM - Creating none action')

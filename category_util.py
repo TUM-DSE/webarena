@@ -1,7 +1,7 @@
 
 categories = {}
 
-category['Data Analysis'] = [
+categories['Data Analysis'] = [
         'What is the top-{{n}} best-selling product in {{year}}',
         'What is the top-{{n}} best-selling brand in {{period}}',
         'What is the top-{{n}} best-selling product type in {{period}}',
@@ -40,16 +40,23 @@ category['Data Analysis'] = [
         'Among the top {{number}} post in "{{subreddit}}" forum, {{description}}',
         'Tell me the count of comments that have received more downvotes than upvotes for the user who made the latest post on the {{forum}} forum',
         'Gather the titles of {{product}} reviews with {{rating}} rating from OneStopShop, and post them in the games subreddit under the title "real user feedback on {{product}}"',
-
+        'What are the top-{{n}} best-selling product in {{year}}',
+        'What are the top-{{n}} best-selling product in {{period}}',
+        'What are the top-{{n}} best-selling product in {{year}}',
+        'Tell me the the number of reviews that our store received by far that mention term "{{term}}"'
+        'Tell me the count of comments that have received more downvotes than upvotes for the user who made the latest post on the {{forum}} forum.',
+        'Tell me the the number of reviews that our store received by far that mention term "{{term}}"',
+        'Tell me the count of comments that have received more downvotes than upvotes for the user who made the latest post on the {{forum}} forum.',
 
 
 
 
         ]
 
-category['Account Management'] = [
+categories['Account Management'] = [
         'What is the date when I made my first purchase on this site?',
         'Today is 6/12/2023. Tell me how many fulfilled orders I have {{period}}, and the total amount of money I spent',
+        'Today is 6/12/2023. Tell me how many fulfilled orders I have {{period}}, and the total amount of money I spent.',
         'I recently moved, my address is {{address}}, update my information on OneStopShopping accordingly',
         'Update the project site\'s title to "{{title}}"',
         'Change the page title of "{{old-heading}}" page on my site to "{{heading}}"',
@@ -70,7 +77,7 @@ category['Account Management'] = [
 
         ]
 
-category['Order Management'] = [
+categories['Order Management'] = [
         'Get the {{attribute}} of the {{status}} order',
         'Get the order number of my most recent {{status}} order',
         'Tell me the status of my latest order and when will it arrive',
@@ -87,7 +94,7 @@ category['Order Management'] = [
 
         ]
 
-category['Social Media'] = [
+categories['Social Media'] = [
         'Rate my recent purchase of {{product}} with {{num_star}} stars, using my nickname {{nickname}}?',
         'Post a review of my recent reading "{{book}}" in the r/books with my comment "{{content}}"',
         'Re-post the image of {{content}} in this page to {{subreddit}} subreddit and note "from /f/pics"',
@@ -115,7 +122,7 @@ category['Social Media'] = [
 
         ]
 
-category['Personal Assistant'] = [
+categories['Personal Assistant'] = [
         'I have jaw bruxism problem, show me something that could alleviate the problem',
         'What is the {{option}} configuration of the {{product}} I bought {{time}}',
         'How much I spent on {{category}} shopping during {{time}}',
@@ -140,7 +147,7 @@ category['Personal Assistant'] = [
 
         ]
 
-category['Shopping Assistant'] = [
+categories['Shopping Assistant'] = [
         'Search for "{{keyword}}"',
         'I want to browse the products in the {{category}} category',
         'Show me products under ${{price}} in "{{product_category}}" category',

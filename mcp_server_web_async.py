@@ -19,6 +19,7 @@ import pickle
 import dill
 import ast
 import gzip
+import time
 
 mcp = FastMCP("web")
 global_env = None
@@ -53,14 +54,15 @@ async def login(config_file) -> str:
             if _c["storage_state"]:
                 cookie_file_name = os.path.basename(_c["storage_state"])
                 comb = get_site_comb_from_filepath(cookie_file_name)
-                temp_dir = tempfile.mkdtemp()
+                #temp_dir = tempfile.mkdtemp()
+                temp_dir = '/root/guard_tmp'
                 # subprocess to renew the cookie
                 subprocess.run(
                     [
                         "python",
                         "agent_scripts/webarena-agent/webarena/browser_env/auto_login.py",
-                        #"--auth_folder",
-                        #temp_dir,
+                        "--auth_folder",
+                        temp_dir,
                         "--site_list",
                         *comb,
                     ]
@@ -72,8 +74,8 @@ async def login(config_file) -> str:
                 with open(config_file, "w") as f:
                     json.dump(_c, f)
     except Exception as e:
-        return f'Error logging in: {str(e)}'
-    return f"Logged in {config_file}"
+        return f'Error logging in: {e}'
+    return f"{config_file}"
 
 #@mcp.tool()
 #async def env_step(action):
@@ -166,12 +168,18 @@ async def reset_env(config_file: str) -> str:
     global global_env
     
     # Run the sync reset in a separate thread
-    def _reset():
-        return global_env.reset(
-            options={"config_file": 'agent_scripts/webarena-agent/webarena/' + config_file}
-        )
+    def _reset(config_file):
+            return global_env.reset()
+       #         options={"config_file":  config_file}
+        #    )
+
     
-    obs, info = await asyncio.to_thread(_reset)
+    start = time.time()
+#    config_file = 'agent_scripts/webarena-agent/webarena/'+ config_file
+    obs, info = await asyncio.to_thread(_reset, config_file)
+    end = time.time()
+    #return f"Time to reset: {end - start}"
+
     obs['image'] = None
     page = info['page']
     info['page'] = None

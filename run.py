@@ -49,6 +49,7 @@ from guardian_api import call_MCP
 from guardian_api import get_tools
 from guardian_api import transmit_log
 
+from category_util import *
 
 class Context:
     def __init__(self):
@@ -403,6 +404,19 @@ def generate_get_client_mcp():
     msg = json.dumps(msg)
     return msg
 
+def get_category(_c) -> str:
+    global categories
+    selected_cat = None
+    for cat in categories.keys():
+        if _c['intent_template'].strip() in categories[cat]:
+            selected_cat = cat
+            break
+    if selected_cat == None:
+        selected_cat = "Unknown"
+
+    return selected_cat
+
+
 def test(
     args: argparse.Namespace,
     agent: Agent | PromptAgent | TeacherForcingAgent,
@@ -449,16 +463,15 @@ def test(
                 config_file, args.result_dir, args.action_set_tag
             )
 
-            login_mcp = generate_login_mcp(config_file)
-            print('Calling MCP login')
-            result = call_MCP(context, login_mcp)
-            print(f'[Agent] Got login result: {result}')
 
             # get intent
             with open(config_file) as f:
                 _c = json.load(f)
                 intent = _c["intent"]
                 task_id = _c["task_id"]
+                f_measure += f'Intent template: {_c["intent_template"]}\n'
+                category = get_category(_c)
+                f_measure += f'Category: {category}\n'
                 # automatically login
                 #if _c["storage_state"]:
                 #    cookie_file_name = os.path.basename(_c["storage_state"])
@@ -483,6 +496,13 @@ def test(
                 #    with open(config_file, "w") as f:
                 #        json.dump(_c, f)
 
+            login_mcp = generate_login_mcp(config_file)
+            print('Calling MCP login')
+            result = call_MCP(context, login_mcp)
+            config_file = json.loads(result)["content"]
+            print(f'[Agent] Got login result: {config_file}')
+
+
             logger.info(f"[Config file]: {config_file}")
             logger.info(f"[Intent]: {intent}")
 
@@ -493,7 +513,11 @@ def test(
             #obs, info = env.reset(options={"config_file": config_file})
             reset_mcp = generate_reset_env_mcp(config_file)
             print('Calling MCP reset init')
+            debug_start = time.time()
             result = call_MCP(context, reset_mcp)
+            debug_end = time.time()
+            print(f"Reset init took {debug_end - debug_start}")
+
             result = json.loads(result)["content"]
             result = result.split('---=---')
             #print(f"Raw obs: {result[0]}")
@@ -518,6 +542,11 @@ def test(
 
             meta_data = {"action_history": ["None"]}
             turn = 1
+
+            debug_start = time.time()
+            ones = np.ones((720, 1280, 4), dtype=np.uint8) * 255
+            debug_end = time.time()
+            print(f"Gen ones took {debug_end - debug_start}")
             while True:
                 #f_measure.write(f"--- Turn {turn} ---\n")
                 f_measure += f"--- Turn {turn} ---\n"
@@ -533,9 +562,12 @@ def test(
                 else:
                     try:
                         print('[TEO] >>> Generating next action')
+                        debug_start = time.time()
                         action, f_measure = agent.next_action(
                             trajectory, intent, meta_data=meta_data, ctx=context, f=f_measure
                         )
+                        debug_end = time.time()
+                        print(f"Generate action took {debug_end - debug_start}")
                         print('[TEO] >>> Generated next action')
                     except ValueError as e:
                         print("[TEO] >>>> GOT error message: {str(e)}")
@@ -583,7 +615,7 @@ def test(
                # print(f"[Agent] Decompressed obs: {obs}")
                # print(f"[Agent] Reconstructed obs: {obs}")
 
-                obs['image'] = np.ones((720, 1280, 4), dtype=np.uint8) * 255 
+                obs['image'] = ones  
                 # TODO: Checl terminated type
                 #print(f"Loading terminated: {type(result[2])} {result[2]}")
                 terminated = result[2] == "True"
